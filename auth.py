@@ -1,52 +1,53 @@
-diff --git a/auth.py b/auth.py
-new file mode 100644
-index 0000000000000000000000000000000000000000..13ca4ddbb1561894fb175a7b95ea844c8c8c562c
---- /dev/null
-+++ b/auth.py
-@@ -0,0 +1,96 @@
-+"""User registration, login, and password hashing logic."""
-+
-+import hashlib
-+import hmac
-+import secrets
-+import sqlite3
-+
-+from database import get_connection
-+from utils import prompt_non_empty
-+
-+MIN_USERNAME_LENGTH = 3
-+MIN_PASSWORD_LENGTH = 6
-+SALT_BYTES = 16
-+HASH_SEPARATOR = "$"
-+
-+
-+def normalize_username(username):
-+    """Return a normalized username for consistent storage and lookup."""
-+    return username.strip()
-+
-+
-+def hash_password(password, salt=None):
-+    """Return a salted SHA-256 password hash in the format salt$hash."""
-+    if salt is None:
-+        salt = secrets.token_hex(SALT_BYTES)
-+
-+    password_hash = hashlib.sha256(f"{salt}{password}".encode("utf-8")).hexdigest()
-+    return f"{salt}{HASH_SEPARATOR}{password_hash}"
-+
-+
-+def verify_password(password, stored_password):
-+    """Verify a password against a stored salted or legacy SHA-256 hash."""
-+    if HASH_SEPARATOR in stored_password:
-+        salt, expected_hash = stored_password.split(HASH_SEPARATOR, 1)
-+        actual_hash = hashlib.sha256(f"{salt}{password}".encode("utf-8")).hexdigest()
-+        return hmac.compare_digest(actual_hash, expected_hash)
-+
-+    legacy_hash = hashlib.sha256(password.encode("utf-8")).hexdigest()
-+    return hmac.compare_digest(legacy_hash, stored_password)
-+
-+
+"""Регистрация пользователей, вход в систему и хеширование паролей."""
+
+import hashlib
+import hmac
+import secrets
+import sqlite3
+
+from database import get_connection
+from utils import prompt_non_empty
+
+# Минимальные ограничения делают ввод чуть безопаснее и удобнее для проверки.
+MIN_USERNAME_LENGTH = 3
+MIN_PASSWORD_LENGTH = 6
+
+# Количество байтов для соли. Соль делает одинаковые пароли разными в базе.
+SALT_BYTES = 16
+HASH_SEPARATOR = "$"
+
+
+def normalize_username(username):
+    """Вернуть имя пользователя без лишних пробелов в начале и конце."""
+    return username.strip()
+
+
+def hash_password(password, salt=None):
+    """Вернуть SHA-256 хеш пароля в формате salt$hash."""
+    if salt is None:
+        # secrets подходит для генерации случайных значений, связанных с безопасностью.
+        salt = secrets.token_hex(SALT_BYTES)
+
+    # В базе хранится не сам пароль, а результат хеширования соли и пароля.
+    password_hash = hashlib.sha256(f"{salt}{password}".encode("utf-8")).hexdigest()
+    return f"{salt}{HASH_SEPARATOR}{password_hash}"
+
+
+def verify_password(password, stored_password):
+    """Проверить введённый пароль по сохранённому хешу."""
+    if HASH_SEPARATOR in stored_password:
+        # Новый формат хранения: соль и хеш лежат в одной строке через разделитель.
+        salt, expected_hash = stored_password.split(HASH_SEPARATOR, 1)
+        actual_hash = hashlib.sha256(f"{salt}{password}".encode("utf-8")).hexdigest()
+        return hmac.compare_digest(actual_hash, expected_hash)
+
+    # Поддержка старого варианта, если в базе уже есть простые SHA-256 хеши без соли.
+    legacy_hash = hashlib.sha256(password.encode("utf-8")).hexdigest()
+    return hmac.compare_digest(legacy_hash, stored_password)
+
+
 def register_user():
-    """Register a new user and store only the hashed password."""
+    """Зарегистрировать нового пользователя и сохранить только хеш пароля."""
     print("\nUser registration")
     username = normalize_username(
         prompt_non_empty("Username: ", min_length=MIN_USERNAME_LENGTH)
@@ -62,6 +63,7 @@ def register_user():
 
     try:
         with get_connection() as connection:
+            # Знак ? в SQL-запросе защищает от SQL-инъекций.
             connection.execute(
                 "INSERT INTO users (username, password) VALUES (?, ?)",
                 (username, hash_password(password)),
@@ -79,7 +81,7 @@ def register_user():
 
 
 def login_user():
-    """Authenticate a user and return their username on success."""
+    """Проверить логин и пароль, вернуть имя пользователя при успешном входе."""
     print("\nUser login")
     username = normalize_username(prompt_non_empty("Username: "))
     password = prompt_non_empty("Password: ")
@@ -94,9 +96,10 @@ def login_user():
         print(f"Database error during login: {error}")
         return None
 
+    # Сначала проверяем, найден ли пользователь, затем сравниваем пароль с хешем.
     if user is None or not verify_password(password, user["password"]):
         print("Invalid username or password.")
         return None
 
-+    print(f"Welcome, {user['username']}!")
-+    return user["username"]
+    print(f"Welcome, {user['username']}!")
+    return user["username"]
