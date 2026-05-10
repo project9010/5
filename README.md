@@ -1,56 +1,56 @@
-# Document Management System for АО "ОМЕГА"
+# Система электронного документооборота для АО "ОМЕГА"
 
-A console-based document management system written in Python 3 with SQLite storage. The project is structured as a small real application for an **Information Systems and Programming** diploma project.
+Консольная система управления документами на Python 3 с хранением данных в SQLite. Проект оформлен как небольшое реальное приложение для дипломной работы по направлению **"Информационные системы и программирование"**.
 
-## Project structure
+## Структура проекта
 
 ```text
-main.py       - application entry point and menu navigation
-auth.py       - user registration, login, and SHA-256 password hashing
-documents.py  - document creation, viewing, search, deletion, and status workflow
-database.py   - SQLite connection and automatic schema creation
-utils.py      - shared input validation and console output helpers
+main.py       - точка входа в приложение и навигация по меню
+auth.py       - регистрация, вход и SHA-256 хеширование паролей
+documents.py  - создание, просмотр, поиск, удаление документов и изменение статуса
+database.py   - подключение к SQLite и автоматическое создание таблиц
+utils.py      - общие функции проверки ввода и вывода данных в консоль
 ```
 
-## Features
+## Возможности
 
-- User registration and login.
-- Password hashing with SHA-256 and per-user salt.
-- SQLite database created automatically on startup.
-- Create, list, view, delete, and search documents.
-- Update document status through a fixed workflow:
+- Регистрация и вход пользователей.
+- Хеширование паролей SHA-256 с индивидуальной солью для каждого пользователя.
+- Автоматическое создание SQLite базы данных при первом запуске.
+- Создание, просмотр, удаление и поиск документов.
+- Изменение статуса документа по фиксированному маршруту:
   - `created`
   - `in progress`
   - `approved`
   - `rejected`
-- Secure SQL execution with parameterized queries for user values.
-- Console input validation for empty fields, document IDs, and menu choices.
+- Защищённое выполнение SQL-запросов с параметрами для пользовательских данных.
+- Проверка консольного ввода: пустые поля, идентификаторы документов и пункты меню.
 
-## Database tables
+## Таблицы базы данных
 
 ### users
 
-| Column | Description |
+| Поле | Описание |
 | --- | --- |
-| `id` | User identifier |
-| `username` | Unique username |
-| `password` | SHA-256 password hash |
+| `id` | Идентификатор пользователя |
+| `username` | Уникальное имя пользователя |
+| `password` | SHA-256 хеш пароля |
 
 ### documents
 
-| Column | Description |
+| Поле | Описание |
 | --- | --- |
-| `id` | Document identifier |
-| `title` | Document title |
-| `content` | Document content |
-| `author` | Username of the creator |
-| `created_at` | Creation timestamp |
-| `status` | Current workflow status |
+| `id` | Идентификатор документа |
+| `title` | Заголовок документа |
+| `content` | Содержание документа |
+| `author` | Имя пользователя, создавшего документ |
+| `created_at` | Дата и время создания |
+| `status` | Текущий статус документа |
 
-## How to run
+## Как запустить
 
 ```bash
 python main.py
 ```
 
-The database file `dms_omega.db` is created automatically in the project directory.
+Файл базы данных `dms_omega.db` создаётся автоматически в папке проекта.
