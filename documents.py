@@ -84,7 +84,7 @@ def update_document_status_record(document_id, new_status):
 
 
 def search_document_records(field, keyword):
-    """Найти документы по разрешённому полю и вернуть совпадающие строки."""
+    """Найти документы по разрешенному полю и вернуть совпадающие строки."""
     # Разрешаем искать только по полям из SEARCH_OPTIONS, чтобы не подставлять в SQL что угодно.
     allowed_fields = {option[0] for option in SEARCH_OPTIONS.values()}
     if field not in allowed_fields:
