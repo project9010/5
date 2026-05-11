@@ -17,23 +17,36 @@ import java.util.regex.Pattern;
 /**
  * Java-графическая оболочка для СЭД АО "ОМЕГА".
  *
- * Важно: бизнес-логика и база данных остаются на Python.
- * Этот Java-клиент отправляет HTTP-запросы в backend_api.py.
+ * <p>Этот файл является клиентской частью приложения. Он не работает с SQLite напрямую:
+ * база данных, проверка логина и пароля, создание документов и поиск выполняются
+ * Python-бэкендом {@code backend_api.py}. Java-клиент только рисует окно, собирает
+ * данные из полей формы и отправляет HTTP-запросы на локальный адрес API.</p>
+ *
+ * <p>Перед запуском этого окна нужно запустить Python-сервер командой
+ * {@code python backend_api.py}. Затем Java-клиент можно скомпилировать и запустить
+ * командами {@code javac OmegaDMSGui.java} и {@code java OmegaDMSGui}.</p>
  */
 public class OmegaDMSGui extends JFrame {
+    // Базовый адрес Python API. Все запросы Java-клиента начинаются с этого URL.
     private static final String API_URL = "http://127.0.0.1:8000/api";
+
+    // Список статусов должен совпадать со списком VALID_STATUSES в Python-файле utils.py.
     private static final String[] STATUSES = {"created", "in progress", "approved", "rejected"};
 
+    // CardLayout позволяет переключаться между двумя экранами: авторизацией и документами.
     private CardLayout cardLayout;
     private JPanel rootPanel;
 
+    // Поля экрана авторизации. JPasswordField скрывает пароль символами-масками.
     private JTextField usernameField;
     private JPasswordField passwordField;
     private JPasswordField confirmPasswordField;
 
+    // currentUser хранит имя пользователя после успешного входа.
     private JLabel currentUserLabel;
     private String currentUser;
 
+    // Элементы основного экрана: таблица, форма документа, статус и поиск.
     private JTable documentsTable;
     private DefaultTableModel documentsModel;
     private JTextField titleField;
@@ -42,6 +55,13 @@ public class OmegaDMSGui extends JFrame {
     private JComboBox<String> searchFieldBox;
     private JTextField searchTextField;
 
+    /**
+     * Точка входа Java-приложения.
+     *
+     * <p>Swing-компоненты нужно создавать в специальном потоке обработки событий
+     * Event Dispatch Thread. Метод {@code SwingUtilities.invokeLater} как раз
+     * передаёт создание окна в этот поток.</p>
+     */
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
             OmegaDMSGui app = new OmegaDMSGui();
@@ -49,12 +69,17 @@ public class OmegaDMSGui extends JFrame {
         });
     }
 
+    /**
+     * Конструктор создаёт главное окно, настраивает размер и добавляет два экрана.
+     */
     public OmegaDMSGui() {
         setTitle("СЭД АО ОМЕГА — Java GUI + Python Backend");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(1000, 680);
+        // null означает центрирование окна относительно экрана.
         setLocationRelativeTo(null);
 
+        // В rootPanel лежат оба экрана; CardLayout показывает только один из них.
         cardLayout = new CardLayout();
         rootPanel = new JPanel(cardLayout);
         rootPanel.add(createAuthPanel(), "auth");
@@ -64,7 +89,14 @@ public class OmegaDMSGui extends JFrame {
         cardLayout.show(rootPanel, "auth");
     }
 
+    /**
+     * Создать экран авторизации.
+     *
+     * <p>На этом экране пользователь может зарегистрироваться или войти. При нажатии
+     * кнопок вызываются методы {@link #register()} и {@link #login()}.</p>
+     */
     private JPanel createAuthPanel() {
+        // GridBagLayout удобен для форм: элементы можно размещать по строкам и колонкам.
         JPanel panel = new JPanel(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(8, 8, 8, 8);
@@ -99,6 +131,7 @@ public class OmegaDMSGui extends JFrame {
         confirmPasswordField = new JPasswordField(24);
         panel.add(confirmPasswordField, gbc);
 
+        // Кнопки используют слушатели событий: при клике выполняется нужный метод.
         JPanel buttons = new JPanel(new FlowLayout());
         JButton loginButton = new JButton("Войти");
         JButton registerButton = new JButton("Зарегистрироваться");
@@ -119,6 +152,12 @@ public class OmegaDMSGui extends JFrame {
         return panel;
     }
 
+    /**
+     * Создать основной экран после входа пользователя.
+     *
+     * <p>Экран состоит из верхней панели с именем пользователя, формы документа,
+     * таблицы документов и панели поиска.</p>
+     */
     private JPanel createDocumentsPanel() {
         JPanel panel = new JPanel(new BorderLayout(10, 10));
         panel.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
@@ -132,6 +171,7 @@ public class OmegaDMSGui extends JFrame {
         topPanel.add(logoutButton, BorderLayout.EAST);
         panel.add(topPanel, BorderLayout.NORTH);
 
+        // JSplitPane делит окно на левую часть с формой и правую часть с таблицей.
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, createDocumentForm(), createTablePanel());
         splitPane.setDividerLocation(330);
         panel.add(splitPane, BorderLayout.CENTER);
@@ -140,6 +180,9 @@ public class OmegaDMSGui extends JFrame {
         return panel;
     }
 
+    /**
+     * Создать левую форму для ввода заголовка, текста и статуса документа.
+     */
     private JPanel createDocumentForm() {
         JPanel form = new JPanel(new BorderLayout(6, 6));
         form.setBorder(BorderFactory.createTitledBorder("Документ"));
@@ -147,6 +190,7 @@ public class OmegaDMSGui extends JFrame {
         JPanel fields = new JPanel(new BorderLayout(6, 6));
         titleField = new JTextField();
         contentArea = new JTextArea(12, 24);
+        // Перенос строк делает длинный текст документа читаемым внутри поля.
         contentArea.setLineWrap(true);
         contentArea.setWrapStyleWord(true);
 
@@ -168,7 +212,10 @@ public class OmegaDMSGui extends JFrame {
         JButton updateStatusButton = new JButton("Обновить статус");
         JButton deleteButton = new JButton("Удалить выбранный");
 
+        // Выпадающий список ограничивает выбор только допустимыми статусами.
         statusBox = new JComboBox<>(STATUSES);
+
+        // Каждая кнопка вызывает отдельный метод, чтобы код было проще читать и менять.
         createButton.addActionListener(event -> createDocument());
         clearButton.addActionListener(event -> clearForm());
         updateStatusButton.addActionListener(event -> updateStatus());
@@ -185,17 +232,26 @@ public class OmegaDMSGui extends JFrame {
         return form;
     }
 
+    /**
+     * Создать таблицу документов.
+     *
+     * <p>Таблица показывает краткую информацию. Полное содержание документа
+     * загружается отдельно при выборе строки.</p>
+     */
     private JPanel createTablePanel() {
         JPanel panel = new JPanel(new BorderLayout());
         panel.setBorder(BorderFactory.createTitledBorder("Список документов"));
 
+        // DefaultTableModel хранит строки таблицы. Второй аргумент 0 означает, что строк пока нет.
         documentsModel = new DefaultTableModel(new Object[]{"ID", "Заголовок", "Автор", "Создан", "Статус"}, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
+                // Пользователь не редактирует таблицу напрямую: изменения идут через кнопки и API.
                 return false;
             }
         };
         documentsTable = new JTable(documentsModel);
+        // Разрешаем выбирать только один документ за раз.
         documentsTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         documentsTable.getSelectionModel().addListSelectionListener(event -> {
             if (!event.getValueIsAdjusting()) {
@@ -207,6 +263,12 @@ public class OmegaDMSGui extends JFrame {
         return panel;
     }
 
+    /**
+     * Создать нижнюю панель поиска.
+     *
+     * <p>Пользователь выбирает поле поиска: title, content или author. Эти имена
+     * соответствуют разрешённым полям в Python-функции search_document_records.</p>
+     */
     private JPanel createSearchPanel() {
         JPanel panel = new JPanel(new BorderLayout(6, 6));
         panel.setBorder(BorderFactory.createTitledBorder("Поиск"));
@@ -230,17 +292,25 @@ public class OmegaDMSGui extends JFrame {
         return panel;
     }
 
+    /**
+     * Зарегистрировать пользователя через Python API.
+     *
+     * <p>Java не хеширует пароль сама. Она отправляет логин и пароль в Python,
+     * а Python уже создаёт соль, считает SHA-256 и сохраняет пользователя в SQLite.</p>
+     */
     private void register() {
         String username = usernameField.getText().trim();
         String password = new String(passwordField.getPassword());
         String confirmation = new String(confirmPasswordField.getPassword());
 
+        // Проверку совпадения паролей удобно сделать сразу на клиенте.
         if (!password.equals(confirmation)) {
             showError("Пароли не совпадают.");
             return;
         }
 
         try {
+            // Отправляем POST /api/register с JSON-телом {"username": ..., "password": ...}.
             ApiResponse response = sendRequest("POST", "/register", jsonObject(
                     "username", username,
                     "password", password
@@ -257,6 +327,9 @@ public class OmegaDMSGui extends JFrame {
         }
     }
 
+    /**
+     * Выполнить вход через Python API и перейти на экран документов при успехе.
+     */
     private void login() {
         String username = usernameField.getText().trim();
         String password = new String(passwordField.getPassword());
@@ -267,6 +340,7 @@ public class OmegaDMSGui extends JFrame {
                     "password", password
             ));
             if (response.isOk()) {
+                // Python возвращает имя пользователя, если логин и пароль правильные.
                 currentUser = extractString(response.body, "username");
                 currentUserLabel.setText("Пользователь: " + currentUser);
                 cardLayout.show(rootPanel, "documents");
@@ -279,6 +353,9 @@ public class OmegaDMSGui extends JFrame {
         }
     }
 
+    /**
+     * Выйти из учётной записи и вернуться на экран авторизации.
+     */
     private void logout() {
         currentUser = null;
         clearForm();
@@ -286,10 +363,14 @@ public class OmegaDMSGui extends JFrame {
         cardLayout.show(rootPanel, "auth");
     }
 
+    /**
+     * Создать новый документ через Python API.
+     */
     private void createDocument() {
         String title = titleField.getText().trim();
         String content = contentArea.getText().trim();
 
+        // Пустые документы не отправляем на сервер, чтобы пользователь сразу видел ошибку.
         if (title.isEmpty() || content.isEmpty()) {
             showError("Заполните заголовок и содержание документа.");
             return;
@@ -313,6 +394,9 @@ public class OmegaDMSGui extends JFrame {
         }
     }
 
+    /**
+     * Загрузить полный список документов из Python API и обновить таблицу.
+     */
     private void loadDocuments() {
         try {
             ApiResponse response = sendRequest("GET", "/documents", null);
@@ -326,6 +410,9 @@ public class OmegaDMSGui extends JFrame {
         }
     }
 
+    /**
+     * Найти документы по выбранному полю и поисковой строке.
+     */
     private void searchDocuments() {
         String field = (String) searchFieldBox.getSelectedItem();
         String keyword = searchTextField.getText().trim();
@@ -336,6 +423,7 @@ public class OmegaDMSGui extends JFrame {
         }
 
         try {
+            // Значения в URL нужно кодировать, чтобы пробелы и русские буквы передавались корректно.
             String path = "/documents/search?field=" + encode(field) + "&keyword=" + encode(keyword);
             ApiResponse response = sendRequest("GET", path, null);
             if (response.isOk()) {
@@ -348,6 +436,9 @@ public class OmegaDMSGui extends JFrame {
         }
     }
 
+    /**
+     * Обновить статус выбранного документа.
+     */
     private void updateStatus() {
         Integer documentId = selectedDocumentId();
         if (documentId == null) {
@@ -369,6 +460,9 @@ public class OmegaDMSGui extends JFrame {
         }
     }
 
+    /**
+     * Удалить выбранный документ после подтверждения пользователя.
+     */
     private void deleteSelectedDocument() {
         Integer documentId = selectedDocumentId();
         if (documentId == null) {
@@ -376,6 +470,7 @@ public class OmegaDMSGui extends JFrame {
             return;
         }
 
+        // Удаление необратимо, поэтому перед запросом DELETE спрашиваем подтверждение.
         int answer = JOptionPane.showConfirmDialog(this, "Удалить документ ID " + documentId + "?", "Подтверждение", JOptionPane.YES_NO_OPTION);
         if (answer != JOptionPane.YES_OPTION) {
             return;
@@ -395,6 +490,12 @@ public class OmegaDMSGui extends JFrame {
         }
     }
 
+    /**
+     * Заполнить форму данными выбранной строки таблицы.
+     *
+     * <p>В таблице нет полного текста документа, поэтому содержание дополнительно
+     * запрашивается у Python-бэкенда по ID документа.</p>
+     */
     private void fillFormFromSelectedRow() {
         int row = documentsTable.getSelectedRow();
         if (row < 0) {
@@ -419,6 +520,9 @@ public class OmegaDMSGui extends JFrame {
         }
     }
 
+    /**
+     * Очистить форму документа и снять выбор в таблице.
+     */
     private void clearForm() {
         titleField.setText("");
         contentArea.setText("");
@@ -426,6 +530,9 @@ public class OmegaDMSGui extends JFrame {
         documentsTable.clearSelection();
     }
 
+    /**
+     * Получить ID выбранного документа или null, если строка не выбрана.
+     */
     private Integer selectedDocumentId() {
         int row = documentsTable.getSelectedRow();
         if (row < 0) {
@@ -434,6 +541,9 @@ public class OmegaDMSGui extends JFrame {
         return Integer.parseInt(String.valueOf(documentsModel.getValueAt(row, 0)));
     }
 
+    /**
+     * Перерисовать таблицу на основе списка документов, полученного от Python.
+     */
     private void fillTable(List<DocumentRow> documents) {
         documentsModel.setRowCount(0);
         for (DocumentRow document : documents) {
@@ -447,6 +557,13 @@ public class OmegaDMSGui extends JFrame {
         }
     }
 
+    /**
+     * Отправить HTTP-запрос в Python API.
+     *
+     * @param method HTTP-метод: GET, POST, PUT или DELETE
+     * @param path путь после /api, например /documents
+     * @param body JSON-тело запроса или null для запросов без тела
+     */
     private ApiResponse sendRequest(String method, String path, String body) throws Exception {
         URI uri = URI.create(API_URL + path);
         HttpURLConnection connection = (HttpURLConnection) uri.toURL().openConnection();
@@ -454,6 +571,7 @@ public class OmegaDMSGui extends JFrame {
         connection.setRequestProperty("Accept", "application/json");
         connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
 
+        // Для POST/PUT передаём JSON в тело запроса. Для GET/DELETE body обычно null.
         if (body != null) {
             connection.setDoOutput(true);
             byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
@@ -462,12 +580,16 @@ public class OmegaDMSGui extends JFrame {
             }
         }
 
+        // Если сервер вернул ошибку, тело ответа читается из errorStream.
         int statusCode = connection.getResponseCode();
         InputStream stream = statusCode >= 400 ? connection.getErrorStream() : connection.getInputStream();
         String responseBody = readStream(stream);
         return new ApiResponse(statusCode, responseBody);
     }
 
+    /**
+     * Прочитать ответ сервера в строку UTF-8.
+     */
     private String readStream(InputStream stream) throws Exception {
         if (stream == null) {
             return "";
@@ -483,6 +605,12 @@ public class OmegaDMSGui extends JFrame {
         return builder.toString();
     }
 
+    /**
+     * Собрать простой JSON-объект из пар ключ-значение.
+     *
+     * <p>В проект не добавлялись сторонние библиотеки, поэтому JSON формируется вручную.
+     * Метод подходит для простых строковых полей, которые используются в этом клиенте.</p>
+     */
     private String jsonObject(String... pairs) {
         StringBuilder builder = new StringBuilder("{");
         for (int i = 0; i < pairs.length; i += 2) {
@@ -496,6 +624,9 @@ public class OmegaDMSGui extends JFrame {
         return builder.toString();
     }
 
+    /**
+     * Экранировать спецсимволы перед вставкой строки в JSON.
+     */
     private String escapeJson(String value) {
         if (value == null) {
             return "";
@@ -508,10 +639,19 @@ public class OmegaDMSGui extends JFrame {
                 .replace("\t", "\\t");
     }
 
+    /**
+     * Закодировать значение для безопасной передачи в URL-параметрах.
+     */
     private String encode(String value) {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
+    /**
+     * Достать строковое поле из JSON-ответа.
+     *
+     * <p>Это упрощённый разбор JSON без сторонних библиотек. Для учебного проекта
+     * достаточно, потому что Python API возвращает предсказуемую структуру.</p>
+     */
     private String extractString(String json, String field) {
         Pattern pattern = Pattern.compile("\\\"" + Pattern.quote(field) + "\\\"\\s*:\\s*\\\"((?:\\\\.|[^\\\"])*)\\\"");
         Matcher matcher = pattern.matcher(json);
@@ -521,6 +661,9 @@ public class OmegaDMSGui extends JFrame {
         return "";
     }
 
+    /**
+     * Достать целочисленное поле из JSON-ответа.
+     */
     private int extractInt(String json, String field) {
         Pattern pattern = Pattern.compile("\\\"" + Pattern.quote(field) + "\\\"\\s*:\\s*(\\d+)");
         Matcher matcher = pattern.matcher(json);
@@ -530,6 +673,9 @@ public class OmegaDMSGui extends JFrame {
         return 0;
     }
 
+    /**
+     * Преобразовать JSON escape-последовательности обратно в обычные символы.
+     */
     private String unescapeJson(String value) {
         StringBuilder result = new StringBuilder();
         boolean escaping = false;
@@ -554,6 +700,9 @@ public class OmegaDMSGui extends JFrame {
         return result.toString();
     }
 
+    /**
+     * Разобрать список документов из JSON-ответа Python API.
+     */
     private List<DocumentRow> parseDocuments(String json) {
         List<DocumentRow> documents = new ArrayList<>();
         Pattern objectPattern = Pattern.compile("\\{[^{}]*\\}");
@@ -575,10 +724,19 @@ public class OmegaDMSGui extends JFrame {
         return documents;
     }
 
+    /**
+     * Показать сообщение об ошибке в стандартном диалоговом окне Swing.
+     */
     private void showError(String message) {
         JOptionPane.showMessageDialog(this, message, "Ошибка", JOptionPane.ERROR_MESSAGE);
     }
 
+    /**
+     * Небольшая обёртка над HTTP-ответом.
+     *
+     * <p>Хранит статус ответа и JSON-текст, а также умеет проверить успешность
+     * операции и достать сообщение об ошибке.</p>
+     */
     private class ApiResponse {
         private final int statusCode;
         private final String body;
@@ -588,10 +746,16 @@ public class OmegaDMSGui extends JFrame {
             this.body = body;
         }
 
+        /**
+         * Ответ считается успешным, если HTTP-статус 2xx и Python вернул "ok": true.
+         */
         private boolean isOk() {
             return statusCode >= 200 && statusCode < 300 && body.contains("\"ok\": true");
         }
 
+        /**
+         * Вернуть понятный текст ошибки из JSON или технический ответ сервера.
+         */
         private String errorMessage() {
             String error = extractString(body, "error");
             if (error.isEmpty()) {
@@ -601,6 +765,9 @@ public class OmegaDMSGui extends JFrame {
         }
     }
 
+    /**
+     * Простая модель одной строки документа для отображения в JTable.
+     */
     private static class DocumentRow {
         private final int id;
         private final String title;
