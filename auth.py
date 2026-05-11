@@ -46,6 +46,57 @@ def verify_password(password, stored_password):
     return hmac.compare_digest(legacy_hash, stored_password)
 
 
+def validate_credentials(username, password):
+    """Проверить логин и пароль перед регистрацией или входом."""
+    username = normalize_username(username)
+
+    if len(username) < MIN_USERNAME_LENGTH:
+        return False, f"Имя пользователя должно содержать минимум {MIN_USERNAME_LENGTH} символа."
+
+    if len(password) < MIN_PASSWORD_LENGTH:
+        return False, f"Пароль должен содержать минимум {MIN_PASSWORD_LENGTH} символов."
+
+    return True, ""
+
+
+def register_user_record(username, password):
+    """Создать пользователя через программный интерфейс и вернуть нормализованное имя."""
+    username = normalize_username(username)
+    is_valid, message = validate_credentials(username, password)
+    if not is_valid:
+        raise ValueError(message)
+
+    try:
+        with get_connection() as connection:
+            # Знак ? в SQL-запросе защищает от SQL-инъекций.
+            connection.execute(
+                "INSERT INTO users (username, password) VALUES (?, ?)",
+                (username, hash_password(password)),
+            )
+            connection.commit()
+    except sqlite3.IntegrityError as error:
+        raise ValueError("Пользователь с таким именем уже существует.") from error
+
+    return username
+
+
+def authenticate_user(username, password):
+    """Проверить пользователя через программный интерфейс и вернуть имя при успехе."""
+    username = normalize_username(username)
+
+    with get_connection() as connection:
+        user = connection.execute(
+            "SELECT id, username, password FROM users WHERE username = ?",
+            (username,),
+        ).fetchone()
+
+    # Сначала проверяем, найден ли пользователь, затем сравниваем пароль с хешем.
+    if user is None or not verify_password(password, user["password"]):
+        raise ValueError("Неверное имя пользователя или пароль.")
+
+    return user["username"]
+
+
 def register_user():
     """Зарегистрировать нового пользователя и сохранить только хеш пароля."""
     print("\nUser registration")
@@ -62,22 +113,16 @@ def register_user():
         return None
 
     try:
-        with get_connection() as connection:
-            # Знак ? в SQL-запросе защищает от SQL-инъекций.
-            connection.execute(
-                "INSERT INTO users (username, password) VALUES (?, ?)",
-                (username, hash_password(password)),
-            )
-            connection.commit()
-    except sqlite3.IntegrityError:
-        print("A user with this username already exists.")
+        registered_username = register_user_record(username, password)
+    except ValueError as error:
+        print(error)
         return None
     except sqlite3.Error as error:
         print(f"Database error during registration: {error}")
         return None
 
     print("Registration completed successfully. You can now log in.")
-    return username
+    return registered_username
 
 
 def login_user():
@@ -87,19 +132,13 @@ def login_user():
     password = prompt_non_empty("Password: ")
 
     try:
-        with get_connection() as connection:
-            user = connection.execute(
-                "SELECT id, username, password FROM users WHERE username = ?",
-                (username,),
-            ).fetchone()
+        authenticated_username = authenticate_user(username, password)
+    except ValueError:
+        print("Invalid username or password.")
+        return None
     except sqlite3.Error as error:
         print(f"Database error during login: {error}")
         return None
 
-    # Сначала проверяем, найден ли пользователь, затем сравниваем пароль с хешем.
-    if user is None or not verify_password(password, user["password"]):
-        print("Invalid username or password.")
-        return None
-
-    print(f"Welcome, {user['username']}!")
-    return user["username"]
+    print(f"Welcome, {authenticated_username}!")
+    return authenticated_username
